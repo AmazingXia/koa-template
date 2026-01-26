@@ -1,6 +1,8 @@
 import Koa from 'koa';
 import Router from '@koa/router';
 import bodyParser from 'koa-bodyparser';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // 延迟加载 sharp - 避免在模块加载时失败
 let sharp = null;
@@ -162,20 +164,107 @@ app.on('error', (err, ctx) => {
   });
 });
 
+// 递归读取目录树
+function buildDirectoryTree(dirPath, basePath = '', maxDepth = 10, currentDepth = 0) {
+  if (currentDepth >= maxDepth) {
+    return null;
+  }
+
+  try {
+    const items = fs.readdirSync(dirPath, { withFileTypes: true });
+    const tree = {
+      name: path.basename(dirPath) || '/',
+      path: basePath || '/',
+      type: 'directory',
+      children: []
+    };
+
+    for (const item of items) {
+      const fullPath = path.join(dirPath, item.name);
+      const relativePath = path.join(basePath, item.name);
+
+      // 跳过隐藏文件和 node_modules
+      if (item.name.startsWith('.') && item.name !== '.') {
+        continue;
+      }
+
+      if (item.isDirectory()) {
+        const childTree = buildDirectoryTree(fullPath, relativePath, maxDepth, currentDepth + 1);
+        if (childTree) {
+          tree.children.push(childTree);
+        }
+      } else {
+        try {
+          const stats = fs.statSync(fullPath);
+          tree.children.push({
+            name: item.name,
+            path: relativePath,
+            type: 'file',
+            size: stats.size,
+            modified: stats.mtime.toISOString()
+          });
+        } catch (err) {
+          // 忽略无法访问的文件
+          console.warn(`无法读取文件: ${fullPath}`, err.message);
+        }
+      }
+    }
+
+    // 按类型和名称排序：目录在前，文件在后
+    tree.children.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === 'directory' ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    return tree;
+  } catch (error) {
+    console.error(`读取目录失败: ${dirPath}`, error.message);
+    return null;
+  }
+}
+
 // Define routes
 router.get('/', async (ctx) => {
-  ctx.body = {
-    message: 'Hello from Koa on Node Functions!',
-    endpoints: {
-      '/compress': 'POST - 压缩图片（支持 URL 或 base64）',
-      '/compress/upload': 'POST - 上传并压缩图片（multipart/form-data）'
-    },
-    sharp: (() => {
-      const { sharp: s } = loadSharp();
-      return s ? '可用' : '不可用';
-    })(),
-    ...(sharpError && { sharpError: sharpError.message })
-  };
+  try {
+    // 获取当前工作目录
+    const cwd = process.cwd();
+    const rootPath = path.resolve(cwd);
+
+    // 构建目录树
+    const directoryTree = buildDirectoryTree(rootPath, '/', 40);
+
+    // 获取当前目录信息
+    const currentDirInfo = {
+      cwd: cwd,
+      root: rootPath,
+      __dirname: __dirname || 'unknown',
+      __filename: __filename || 'unknown'
+    };
+
+    ctx.body = {
+      message: 'Hello from Koa on Node Functions!',
+      endpoints: {
+        '/compress': 'POST - 压缩图片（支持 URL 或 base64）',
+        '/compress/upload': 'POST - 上传并压缩图片（multipart/form-data）'
+      },
+      sharp: (() => {
+        const { sharp: s } = loadSharp();
+        return s ? '可用' : '不可用';
+      })(),
+      ...(sharpError && { sharpError: sharpError.message }),
+      directory: currentDirInfo,
+      tree: directoryTree
+    };
+  } catch (error) {
+    ctx.status = 500;
+    ctx.body = {
+      error: '获取目录树失败',
+      message: error.message,
+      stack: error.stack
+    };
+  }
 });
 
 /**
