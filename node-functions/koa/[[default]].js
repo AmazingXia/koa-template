@@ -4,67 +4,77 @@ import bodyParser from 'koa-bodyparser';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// 延迟加载 sharp - 避免在模块加载时失败
+// 尝试使用 ES6 import 导入本地 sharp（让构建系统自动处理）
 let sharp = null;
 let sharpError = null;
 let sharpLoaded = false;
 
 // 延迟加载 sharp 的函数 - 使用本地 sharp 实现
-function loadSharp() {
+async function loadSharp() {
   if (sharpLoaded) {
     return { sharp, sharpError };
   }
 
   sharpLoaded = true;
   try {
-    // 优先尝试使用本地 sharp 实现（从 src/lib/sharp）
-    // 如果失败，回退到 npm 包的 sharp
+    // 优先尝试使用本地 sharp 实现
+    // EdgeOne Pages 会将 node-functions/koa 下的所有文件打包
+    // 所以 sharp 应该放在 node-functions/koa/lib/sharp 目录下
     let sharpModule;
     try {
-      // 使用本地 sharp 实现
-      // EdgeOne Pages 会将 node-functions/koa 下的所有文件打包
-      // 所以 sharp 应该放在 node-functions/koa/lib/sharp 目录下
-      const possiblePaths = [
-        './lib/sharp/lib/index.js',  // node-functions/koa/lib/sharp (优先)
-        '../lib/sharp/lib/index.js',
-        '../../lib/sharp/lib/index.js'
-      ];
-
-      const requireFunc = require;
-      const path = require('path');
-      const fs = require('fs');
-      let loaded = false;
-
-      // 首先尝试使用 __dirname 构建绝对路径
+      // 尝试使用动态 import（ES6 模块）
+      // 这样构建系统可能会自动包含这些文件
       try {
-        const currentDir = __dirname || path.dirname(require.resolve('./'));
-        const absolutePath = path.resolve(currentDir, '../lib/sharp/lib/index.js');
-        if (fs.existsSync(absolutePath)) {
-          sharpModule = requireFunc(absolutePath);
-          loaded = true;
-          console.log('✅ 使用本地 Sharp 模块（绝对路径）:', absolutePath);
-        }
-      } catch (absError) {
-        console.warn('⚠️  绝对路径失败:', absError.message);
-      }
+        const sharpModule_import = await import('./lib/sharp/lib/index.js');
+        sharpModule = sharpModule_import.default || sharpModule_import;
+        console.log('✅ 使用本地 Sharp 模块（ES6 import）');
+      } catch (importError) {
+        console.warn('⚠️  ES6 import 失败，尝试 require:', importError.message);
+        // 回退到 require
+        const requireFunc = require;
+        const possiblePaths = [
+          './lib/sharp/lib/index.js',  // node-functions/koa/lib/sharp (优先)
+          '../lib/sharp/lib/index.js',
+          '../../lib/sharp/lib/index.js'
+        ];
 
-      // 如果绝对路径失败，尝试相对路径
-      if (!loaded) {
+        let loaded = false;
         for (const localSharpPath of possiblePaths) {
           try {
             sharpModule = requireFunc(localSharpPath);
             loaded = true;
-            console.log('✅ 使用本地 Sharp 模块，路径:', localSharpPath);
+            console.log('✅ 使用本地 Sharp 模块（require），路径:', localSharpPath);
             break;
           } catch (pathError) {
-            // 继续尝试下一个路径
             console.warn('⚠️  路径失败:', localSharpPath, pathError.message);
           }
         }
-      }
 
-      if (!loaded) {
-        throw new Error('所有本地路径都失败');
+        if (!loaded) {
+          // 尝试使用绝对路径
+          const currentDir = __dirname || '/var/user';
+          const possibleAbsolutePaths = [
+            path.join(currentDir, 'lib/sharp/lib/index.js'),
+            path.join(currentDir, 'node-functions/koa/lib/sharp/lib/index.js')
+          ];
+
+          for (const absolutePath of possibleAbsolutePaths) {
+            try {
+              if (fs.existsSync(absolutePath)) {
+                sharpModule = requireFunc(absolutePath);
+                loaded = true;
+                console.log('✅ 使用本地 Sharp 模块（绝对路径）:', absolutePath);
+                break;
+              }
+            } catch (absError) {
+              // 继续尝试
+            }
+          }
+
+          if (!loaded) {
+            throw new Error('所有本地路径都失败');
+          }
+        }
       }
     } catch (localError) {
       console.warn('⚠️  本地 Sharp 加载失败，尝试使用 npm 包:', localError.message);
@@ -84,7 +94,7 @@ function loadSharp() {
     console.error('📋 错误堆栈:', error.stack);
     console.error('💡 提示: 图片压缩功能将不可用');
     console.error('💡 解决方案:');
-    console.error('   1. 确保本地 sharp 代码在 src/lib/sharp 目录');
+    console.error('   1. 确保本地 sharp 代码在 node-functions/koa/lib/sharp 目录');
     console.error('   2. 或确保已安装依赖: pnpm install');
     console.error('   3. 检查 EdgeOne Pages 是否支持原生模块');
   }
@@ -243,16 +253,17 @@ router.get('/', async (ctx) => {
       __filename: __filename || 'unknown'
     };
 
+    // 检查 sharp 状态
+    const { sharp: sharpModule } = await loadSharp();
+    const sharpStatus = sharpModule ? '可用' : '不可用';
+
     ctx.body = {
       message: 'Hello from Koa on Node Functions!',
       endpoints: {
         '/compress': 'POST - 压缩图片（支持 URL 或 base64）',
         '/compress/upload': 'POST - 上传并压缩图片（multipart/form-data）'
       },
-      sharp: (() => {
-        const { sharp: s } = loadSharp();
-        return s ? '可用' : '不可用';
-      })(),
+      sharp: sharpStatus,
       ...(sharpError && { sharpError: sharpError.message }),
       directory: currentDirInfo,
       tree: directoryTree
@@ -285,7 +296,7 @@ router.post('/compress', async (ctx) => {
   }
 
   // 延迟加载并检查 sharp 是否可用
-  const { sharp: sharpModule, sharpError: error } = loadSharp();
+  const { sharp: sharpModule, sharpError: error } = await loadSharp();
   if (!sharpModule) {
     ctx.status = 503;
     ctx.body = {
@@ -394,7 +405,7 @@ router.post('/compress', async (ctx) => {
  */
 router.post('/compress/upload', async (ctx) => {
   // 延迟加载并检查 sharp 是否可用
-  const { sharp: sharpModule, sharpError: error } = loadSharp();
+  const { sharp: sharpModule, sharpError: error } = await loadSharp();
   if (!sharpModule) {
     ctx.status = 503;
     ctx.body = {
