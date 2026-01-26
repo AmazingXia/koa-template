@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "install:linux": "npm install --os=linux --cpu=x64 --libc=glibc",
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",

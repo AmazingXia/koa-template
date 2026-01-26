@@ -1,0 +1,11 @@
+{
+  "name": "sharp",
+  "version": "0.34.5",
+  "config": {
+    "libvips": "8.15.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "optionalDependencies": {}
+}

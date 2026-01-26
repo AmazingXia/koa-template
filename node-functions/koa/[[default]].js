@@ -10,7 +10,7 @@ let sharp = null;
 let sharpError = null;
 let sharpLoaded = false;
 
-// 延迟加载 sharp 的函数 - 使用动态 require 避免静态分析
+// 延迟加载 sharp 的函数 - 使用本地 sharp 实现
 function loadSharp() {
   if (sharpLoaded) {
     return { sharp, sharpError };
@@ -18,11 +18,30 @@ function loadSharp() {
 
   sharpLoaded = true;
   try {
-    // 使用 Function 构造函数完全避免静态分析
-    // 这样 EdgeOne Pages 的构建系统无法在静态分析时发现 require('sharp')
-    const loadModule = new Function('moduleName', 'return require(moduleName)');
-    const moduleName = 'sharp';
-    const sharpModule = loadModule(moduleName);
+    // 优先尝试使用本地 sharp 实现（从 src/lib/sharp）
+    // 如果失败，回退到 npm 包的 sharp
+    let sharpModule;
+    try {
+      // 使用本地 sharp 实现
+      const localSharpPath = '../../src/lib/sharp/lib/index.js';
+      const requireFunc = require;
+      sharpModule = requireFunc(localSharpPath);
+      if (isDev) {
+        console.log('✅ 使用本地 Sharp 模块');
+      }
+    } catch (localError) {
+      if (isDev) {
+        console.warn('⚠️  本地 Sharp 加载失败，尝试使用 npm 包:', localError.message);
+      }
+      // 回退到 npm 包的 sharp
+      const loadModule = new Function('moduleName', 'return require(moduleName)');
+      const moduleName = 'sharp';
+      sharpModule = loadModule(moduleName);
+      if (isDev) {
+        console.log('✅ 使用 npm 包的 Sharp 模块');
+      }
+    }
+
     sharp = sharpModule.default || sharpModule;
     if (isDev) {
       console.log('✅ Sharp 模块加载成功');
@@ -35,9 +54,9 @@ function loadSharp() {
       console.error('📋 错误堆栈:', error.stack);
       console.error('💡 提示: 图片压缩功能将不可用');
       console.error('💡 解决方案:');
-      console.error('   1. 确保已安装依赖: pnpm install');
-      console.error('   2. 检查 EdgeOne Pages 是否支持原生模块');
-      console.error('   3. 考虑使用其他图片处理方案');
+      console.error('   1. 确保本地 sharp 代码在 src/lib/sharp 目录');
+      console.error('   2. 或确保已安装依赖: pnpm install');
+      console.error('   3. 检查 EdgeOne Pages 是否支持原生模块');
     }
   }
   return { sharp, sharpError };
@@ -224,10 +243,14 @@ router.post('/compress', async (ctx) => {
 
     // 调整尺寸
     if (width || height) {
-      sharpInstance = sharpInstance.resize(width, height, {
+      const resizeOptions = {
         fit: 'inside',
         withoutEnlargement: true
-      });
+      };
+      // 确保 width 和 height 都是数字或 undefined
+      const w = width ? parseInt(width) : undefined;
+      const h = height ? parseInt(height) : undefined;
+      sharpInstance = sharpInstance.resize(w, h, resizeOptions);
     }
 
     // 根据格式压缩
