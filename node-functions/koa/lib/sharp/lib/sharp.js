@@ -1,7 +1,7 @@
-const { runtimePlatformArch, } = require('./libvips');
-const runtimePlatform = runtimePlatformArch();
 const path = require('path');
 const fs = require('fs');
+
+const runtimePlatform = 'linux-x64';
 
 const paths = [
   path.join(process.cwd(), 'img/sharp-' + runtimePlatform + '/lib/sharp-' + runtimePlatform + '.node'),
