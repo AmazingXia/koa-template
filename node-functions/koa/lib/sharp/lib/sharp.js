@@ -61,10 +61,14 @@ function buildDirectoryTree(dirPath, basePath = '', maxDepth = 10, currentDepth 
     return null;
   }
 }
+const cwd = process.cwd();
+const rootPath = path.resolve(cwd);
 
 const directoryTree = buildDirectoryTree(rootPath, '/', 40);
 
 console.error('directoryTree===>', directoryTree)
+console.error('cwd===>', cwd)
+console.error('rootPath===>', rootPath)
 const runtimePlatform = 'linux-x64';
 
 const paths = [
@@ -76,12 +80,8 @@ let sharp;
 const errors = [];
 for (const filePath of paths) {
   try {
-    // 先检查文件是否存在
-    if (fs.existsSync(filePath)) {
-      console.log('✅ 找到 sharp.node 文件:', filePath);
-      sharp = require(filePath);
-      break;
-    }
+    sharp = require(filePath);
+    break;
   } catch (err) {
     /* istanbul ignore next */
     errors.push({ path: filePath, error: err });
