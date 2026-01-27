@@ -3,15 +3,7 @@ import Router from '@koa/router';
 import bodyParser from 'koa-bodyparser';
 import fs from 'node:fs';
 import path from 'node:path';
-import sharpModule from './lib/sharp/lib/index.js';
-
-// 直接导入本地 sharp 模块
-const sharp = sharpModule.default || sharpModule;
-
-console.log('sharpModule===>', sharpModule)
-
-console.log('✅ Sharp 模块加载成功');
-console.log('📦 Sharp 版本:', sharp?.versions?.sharp || 'unknown');
+import sharp from 'sharp';
 
 // Create Koa application
 const app = new Koa();
@@ -200,8 +192,6 @@ router.post('/compress', async (ctx) => {
     console.warn('⚠️  缺少必要参数: url 或 base64');
     return;
   }
-
-  // sharp 已通过静态导入加载，直接使用
 
   try {
     let imageBuffer;
