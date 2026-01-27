@@ -4,7 +4,7 @@ const fs = require('fs');
 const runtimePlatform = 'linux-x64';
 
 const paths = [
-  path.join(process.cwd(), 'img/sharp-' + runtimePlatform + '/lib/sharp-' + runtimePlatform + '.node'),
+  path.join(process.cwd(), 'https://koa.niumengke.top/img/sharp-' + runtimePlatform + '/lib/sharp-' + runtimePlatform + '.node'),
 ];
 
 let sharp;
