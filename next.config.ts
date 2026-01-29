@@ -13,7 +13,8 @@ const nextConfig: NextConfig = {
     ],
   },
   // 确保 sharp 在服务端组件中被正确处理
-  serverExternalPackages: [],
+  // 设置为外部包，不会被 webpack 打包，.node 文件由 Node.js 运行时加载
+  serverExternalPackages: ['sharp'],
 };
 
 export default nextConfig;
