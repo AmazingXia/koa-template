@@ -7,11 +7,16 @@ import path from 'node:path';
 // 使用动态导入避免 esbuild 打包 sharp 的原生模块
 let sharp;
 async function getSharp() {
-  if (!sharp) {
-    const sharpModule = await import('./lib/sharp/lib/index.js');
-    // CommonJS 模块导出，可能需要使用 default 或直接使用模块
-    sharp = sharpModule.default || sharpModule;
+  if (sharp) {
+    return sharp;
   }
+
+  // 动态导入 sharp 模块
+  // 注意：index.js 会同步 require sharp.js，而 sharp.js 的 Proxy 会同步等待远程加载完成
+  const sharpModule = await import('./lib/sharp/lib/index.js');
+  // CommonJS 模块导出，可能需要使用 default 或直接使用模块
+  sharp = sharpModule.default || sharpModule;
+
   return sharp;
 }
 
