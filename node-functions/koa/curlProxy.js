@@ -36,6 +36,8 @@ export async function curlProxy(ctx) {
   try {
     const request = parseCurlCommand(curl.trim());
     axiosConfig = requestToAxiosConfig(request);
+
+    console.log('axiosConfig===>', axiosConfig)
     const res = await axios(axiosConfig);
     const contentType = res.headers?.['content-type'];
     if (contentType) ctx.set('Content-Type', contentType);
